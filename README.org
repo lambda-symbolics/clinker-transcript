@@ -1,0 +1,53 @@
+#+title: clinker-transcript
+
+Portable provider transcript items for language-model clients.
+
+The library defines the item vocabulary shared by stateless provider
+transcripts: type predicates over decoded Responses and Chat
+Completions items, family privacy for encrypted reasoning, native
+compaction checkpoints and server-executed calls, canonicalization of
+legacy compaction types, and constructors for user messages and
+function-call outputs. Items are ordinary =EQUAL= hash tables as
+decoded from provider JSON.
+
+The name is a portmanteau of Common Lisp and clanker.
+
+* Systems and package
+
+- ASDF system: =clinker-transcript=
+- Test system: =clinker-transcript/tests=
+- Package: =CLINKER-TRANSCRIPT=
+- Nickname: =TRANSCRIPT=
+
+Install the locked dependencies and run all tests:
+
+#+begin_src sh
+./script/bootstrap
+./script/check
+#+end_src
+
+* Items
+
+#+begin_src lisp
+(transcript:family-private-item-p item)
+(transcript:native-compaction-item-canonicalize item)
+(transcript:item-assistant-text item)
+(transcript:user-message-item "hello" leading-content-items)
+(transcript:function-call-output-item "call-1" "ok")
+#+end_src
+
+=FAMILY-PRIVATE-ITEM-P= is true for reasoning items, Chat Completions
+thinking content, native compaction checkpoints, and server-executed
+search and tool-search calls: items that only the producing model
+family can replay. Transcript stores use it to filter projections when
+a conversation moves between families.
+
+* Scope
+
+The chunked durable store, leases, and picker metadata remain host
+concerns for now; this library grows toward them as their formats
+become host independent.
+
+* License
+
+COLL-Attribution. See =LICENSE.lisp=.
