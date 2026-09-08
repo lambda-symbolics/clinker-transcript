@@ -22,4 +22,28 @@
    ;; item constructors and readers
    #:function-call-output-item
    #:item-assistant-text
-   #:user-message-item))
+   #:user-message-item
+   ;; ordered projection and metadata
+   #:projection
+   #:make-projection
+   #:projection-items
+   #:projection-append
+   #:projection-replace
+   #:projection-metadata-table
+   #:projection-error
+   #:projection-error-reason
+   #:projection-error-item
+   #:items-for-family
+   ;; call/output reconciliation
+   #:function-call-output-item-p
+   #:validate-function-call
+   #:use-output
+   #:reconcile-items
+   #:reconciliation
+   #:reconciliation-repairs
+   #:reconciliation-items
+   #:reconciliation-error
+   #:reconciliation-error-call-id
+   #:missing-output-repair
+   #:missing-output-repair-call
+   #:missing-output-repair-call-id))

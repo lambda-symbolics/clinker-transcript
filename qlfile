@@ -1,1 +1,2 @@
 ql yason 2026-01-01
+git structlisp https://github.com/lambda-symbolics/structlisp.git :ref 0a276cd18f6d85576de7d761d96e40a34667b8b7

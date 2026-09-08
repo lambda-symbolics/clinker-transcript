@@ -4,12 +4,14 @@
   :license "COLL-Attribution"
   :version "0.1.0"
   :serial t
-  :depends-on (#:yason)
+  :depends-on (#:yason #:structlisp)
   :components ((:module "src"
                 :serial t
                 :components ((:file "package")
                              (:file "support")
-                             (:file "items"))))
+                             (:file "items")
+                             (:file "projection")
+                             (:file "reconciliation"))))
   :in-order-to ((asdf:test-op (asdf:test-op #:clinker-transcript/tests))))
 
 (asdf:defsystem #:clinker-transcript/tests
@@ -18,7 +20,8 @@
   :serial t
   :components ((:module "tests"
                 :serial t
-                :components ((:file "tests"))))
+                :components ((:file "tests")
+                             (:file "projection-tests"))))
   :perform (asdf:test-op (operation component)
              (declare (ignore operation component))
              (uiop:symbol-call '#:clinker-transcript/tests '#:run-tests)))

@@ -42,11 +42,53 @@ search and tool-search calls: items that only the producing model
 family can replay. Transcript stores use it to filter projections when
 a conversation moves between families.
 
-* Scope
+* Ordered projections
 
-The chunked durable store, leases, and picker metadata remain host
-concerns for now; this library grows toward them as their formats
-become host independent.
+Use =MAKE-PROJECTION= with =:items= to initialize an ordered projection from a
+finite proper list or vector. Append with =PROJECTION-APPEND= and obtain a fresh
+chronological list with =PROJECTION-ITEMS=. Item objects are shared, but collection
+storage is independent. The implementation uses Structlisp deques.
+
+Use =PROJECTION-METADATA-TABLE= with an application-defined key to obtain an EQ
+item-metadata table. Whole-projection replacement with =PROJECTION-REPLACE=
+retains metadata only for retained item identities, including explicit NIL
+values. Obtain fresh metadata tables after replacement. Prepare replacements
+before publication and provide caller-side exclusion for concurrent access.
+
+Use =ITEMS-FOR-FAMILY= with =:item-families= and =:handoff-families= EQ tables to
+filter private content and omit a portable handoff for its native family.
+
+* Reconciliation and recovery
+
+Before publishing a live function call, use =VALIDATE-FUNCTION-CALL= with
+=:preceding-items= to reject missing or duplicate call identifiers.
+
+#+begin_src lisp
+(let ((plan (transcript:reconcile-items items
+                                      :repaired-output-p #'repair-output-p)))
+  (transcript:reconciliation-repairs plan)
+  (transcript:reconciliation-items plan :repair-output #'publish-repair-output))
+#+end_src
+
+=RECONCILE-ITEMS= validates the entire input before returning a plan. Keep each
+contiguous call group together, followed by outputs in call order. Correlated
+outputs are moved beside their calls; orphan outputs retain their positions.
+Duplicate calls and outputs signal =RECONCILIATION-ERROR= with a reason, offending
+item and optional call identifier. With =:repaired-output-p=, tolerate exactly one
+late output after a recognized repair only when the repair follows its call.
+Keep that first output because later transcript items may depend on it.
+
+Inspect =RECONCILIATION-REPAIRS= for ordered =MISSING-OUTPUT-REPAIR= intents. Each
+intent exposes its call and call identifier. Resolve intents using the
+=:repair-output= callback to =RECONCILIATION-ITEMS=. Supply wording and durably
+publish a matching output in that callback before returning it. With no callback,
+handle the missing-output condition with the =USE-OUTPUT= restart.
+
+Install the returned item list only after materialization succeeds. A failed
+callback leaves the plan unchanged. After partial publication, read the durable
+state and build a new plan to avoid publishing an already completed repair twice.
+The library neither executes tools nor publishes records; record schemas, paths,
+leases, ownership and publication policy belong to the host.
 
 * License
 
