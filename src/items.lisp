@@ -97,6 +97,16 @@ placed before the text."
               "text" content))))
     'vector)))
 
+(defun input-text-item (text)
+  "Return one Responses API input_text content part carrying TEXT."
+  (json-object "type" "input_text" "text" text))
+
+(defun input-image-item (image-url &key (detail "high"))
+  "Return one Responses API input_image content part for IMAGE-URL at DETAIL.
+
+IMAGE-URL is usually a base64 data URL; DETAIL is \"high\", \"low\", or \"auto\"."
+  (json-object "type" "input_image" "image_url" image-url "detail" detail))
+
 (defun function-call-output-item (call-id output)
   "Return a Responses API function-call output correlated by CALL-ID."
   (json-object

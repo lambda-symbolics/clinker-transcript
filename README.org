@@ -34,6 +34,8 @@ Install the locked dependencies and run all tests:
 (transcript:item-assistant-text item)
 (transcript:user-message-item "hello" leading-content-items)
 (transcript:function-call-output-item "call-1" "ok")
+(transcript:input-image-item "data:image/png;base64,..." :detail "high")
+(transcript:input-text-item "caption")
 #+end_src
 
 =FAMILY-PRIVATE-ITEM-P= is true for reasoning items, Chat Completions

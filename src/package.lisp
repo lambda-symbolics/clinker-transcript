@@ -21,6 +21,8 @@
    #:tool-search-item-p
    ;; item constructors and readers
    #:function-call-output-item
+   #:input-image-item
+   #:input-text-item
    #:item-assistant-text
    #:user-message-item
    ;; ordered projection and metadata
