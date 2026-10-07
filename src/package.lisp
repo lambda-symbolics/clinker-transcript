@@ -48,4 +48,11 @@
    #:reconciliation-error-call-id
    #:missing-output-repair
    #:missing-output-repair-call
-   #:missing-output-repair-call-id))
+   #:missing-output-repair-call-id
+   ;; compaction carry-forward
+   #:compaction-plan
+   #:make-compaction-plan
+   #:compaction-plan-cutoff
+   #:compaction-plan-items
+   #:compaction-plan-unresolved-calls
+   #:compaction-plan-projection))

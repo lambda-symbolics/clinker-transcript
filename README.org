@@ -92,6 +92,52 @@ state and build a new plan to avoid publishing an already completed repair twice
 The library neither executes tools nor publishes records; record schemas, paths,
 leases, ownership and publication policy belong to the host.
 
+* Compaction carry-forward
+
+Capture a =COMPACTION-PLAN= before requesting a summary or native checkpoint.
+=CUTOFF= is an exclusive item count, defaulting to the captured projection length.
+Inspect calls without outputs at that cutoff using =COMPACTION-PLAN-UNRESOLVED-CALLS=.
+A later output does not change this captured fact. =COMPACTION-PLAN-ITEMS= returns
+an independent chronological list of shared retained items: the earliest
+unresolved call group with adjacent private context, its necessary call/output
+context, and every post-cutoff item. Fully resolved prefixes can be discarded.
+
+#+begin_src lisp
+(let* ((plan (transcript:make-compaction-plan
+              projection :cutoff captured-count :repaired-output-p #'repair-output-p))
+       (replacement
+         (transcript:compaction-plan-projection
+          plan :replacement-items summary-or-checkpoint-and-handoff
+          :additional-items arrivals-since-capture
+          :repair-output #'interrupted-output
+          :family target-family
+          :item-families producing-families
+          :handoff-families native-handoff-families)))
+  (transcript:projection-items replacement))
+#+end_src
+
+Supply chronological arrivals since capture, including outputs and steering, as
+=:additional-items=. Validate them against all captured correlations before
+filtering private content or calling repair policy. An actual arriving output
+resolves its call without invoking =:repair-output=. Retain additional earlier
+context when a late correlated output requires it. Use the same durable-repair
+predicate as reconciliation to recognize one late result following a repair.
+
+Supply a summary or native checkpoint and portable handoff as =:replacement-items=.
+When =:family= is supplied, select private content and handoffs using the existing
+=ITEMS-FOR-FAMILY= policy, then reconcile the selected transcript. Without
+=:family=, retain private items for later host-controlled family projection.
+The =:repaired-output-p= materialization argument defaults to the captured predicate.
+
+=COMPACTION-PLAN-PROJECTION= returns a separate projection only after validating
+the replacement and every supplied repair. Retained item identities keep copied
+metadata tables, including explicit NIL values. The source projection and plan
+are unchanged on success or failure. Provide exclusion while capturing and
+publishing; item references and metadata values are shared and must not be
+mutated by callbacks. The library performs no I/O, publishes no records and
+executes no tools. Choose truthful interrupted/unknown output content in the
+caller, and publish the replacement only after all host-side checks succeed.
+
 * License
 
 COLL-Attribution. See =LICENSE.lisp=.

@@ -11,7 +11,8 @@
                              (:file "support")
                              (:file "items")
                              (:file "projection")
-                             (:file "reconciliation"))))
+                             (:file "reconciliation")
+                             (:file "compaction"))))
   :in-order-to ((asdf:test-op (asdf:test-op #:clinker-transcript/tests))))
 
 (asdf:defsystem #:clinker-transcript/tests
@@ -21,7 +22,8 @@
   :components ((:module "tests"
                 :serial t
                 :components ((:file "tests")
-                             (:file "projection-tests"))))
+                             (:file "projection-tests")
+                             (:file "compaction-tests"))))
   :perform (asdf:test-op (operation component)
              (declare (ignore operation component))
              (uiop:symbol-call '#:clinker-transcript/tests '#:run-tests)))
