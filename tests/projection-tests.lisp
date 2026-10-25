@@ -99,7 +99,14 @@
            (answer (json-object "type" "message" "role" "assistant" "content" "done"))
            (exchange (list user first commentary first-output answer)))
       (check (equal (reconciliation-items (reconcile-items exchange :preserve-order-p t)) exchange)
-             "preserved order leaves a complete exchange as recorded"))
+             "preserved order leaves a complete exchange as recorded")
+      (let ((repair (function-call-output-item "a" "interrupted")))
+        (check (equal (reconciliation-items
+                       (reconcile-items (list user first message repair)
+                                        :preserve-order-p t
+                                        :repaired-output-p (lambda (output) (eq output repair))))
+                      (list user first repair message))
+               "a persisted repair output returns to its call as first projected")))
     (check (equal (reconciliation-items
                    (reconcile-items (vector first-output first message)))
                   (list first first-output message))

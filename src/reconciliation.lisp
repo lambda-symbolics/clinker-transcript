@@ -69,8 +69,9 @@ positions. Detect duplicate calls and outputs before constructing any repairs.
 
 With PRESERVE-ORDER-P, an output that already follows its call keeps its
 position, so a reloaded transcript reproduces the history a provider already
-received. Only outputs recorded before their call and missing outputs are
-placed after the call group.
+received. Outputs recorded before their call, missing outputs, and host repair
+outputs, which REPAIRED-OUTPUT-P recognizes and which were first projected
+directly after their call, are placed after the call group.
 
 REPAIRED-OUTPUT-P, when supplied, recognizes a host's durable repair output.
 Tolerate exactly one later output only when the first output follows its call
@@ -80,45 +81,51 @@ subsequent history may have been produced from it. Never mutate ITEMS."
   (let ((source (coerce items 'list)))
     (multiple-value-bind (calls outputs outputs-after-call)
         (reconciliation--index source repaired-output-p)
-      (let ((ordered (structlisp:make-deque))
-            (repairs (structlisp:make-deque))
-            (remaining source))
-        (loop while remaining
-              for item = (pop remaining)
-              do (cond
-                   ((function-call-output-item-p item)
-                    (let ((call-id (reconciliation--call-id item)))
-                      (when (or (not (gethash call-id calls))
-                                (and preserve-order-p
-                                     (eq item (gethash call-id outputs))
-                                     (gethash call-id outputs-after-call)))
-                        (structlisp:deque-push-back ordered item))))
-                   ((function-call-item-p item)
-                    (let ((group (structlisp:make-deque)))
-                      (structlisp:deque-push-back group item)
-                      (loop while (and remaining
-                                       (function-call-item-p (first remaining)))
-                            do (structlisp:deque-push-back group (pop remaining)))
-                      (let ((group-items (structlisp:deque->list group)))
-                        (structlisp:deque-append ordered group-items)
-                        (dolist (call group-items)
-                          (let* ((call-id (reconciliation--call-id call))
-                                 (output (gethash call-id outputs)))
-                            (cond
-                              ((null output)
-                               (let ((repair (make-instance 'missing-output-repair
-                                                            :call call
-                                                            :call-id call-id)))
-                                 (structlisp:deque-push-back repairs repair)
-                                 (structlisp:deque-push-back ordered repair)))
-                              ((not (and preserve-order-p
-                                         (gethash call-id outputs-after-call)))
-                               (structlisp:deque-push-back ordered output))))))))
-                   (t
-                    (structlisp:deque-push-back ordered item))))
-        (make-instance 'reconciliation
-                       :entries (structlisp:deque->list ordered)
-                       :repairs (structlisp:deque->list repairs))))))
+      (flet ((in-place-p (call-id)
+               "Return true when CALL-ID's recorded output keeps its position."
+               (let ((output (gethash call-id outputs)))
+                 (and preserve-order-p
+                      output
+                      (gethash call-id outputs-after-call)
+                      (not (and repaired-output-p
+                                (funcall repaired-output-p output)))))))
+        (let ((ordered (structlisp:make-deque))
+              (repairs (structlisp:make-deque))
+              (remaining source))
+          (loop while remaining
+                for item = (pop remaining)
+                do (cond
+                     ((function-call-output-item-p item)
+                      (let ((call-id (reconciliation--call-id item)))
+                        (when (or (not (gethash call-id calls))
+                                  (and (eq item (gethash call-id outputs))
+                                       (in-place-p call-id)))
+                          (structlisp:deque-push-back ordered item))))
+                     ((function-call-item-p item)
+                      (let ((group (structlisp:make-deque)))
+                        (structlisp:deque-push-back group item)
+                        (loop while (and remaining
+                                         (function-call-item-p (first remaining)))
+                              do (structlisp:deque-push-back group (pop remaining)))
+                        (let ((group-items (structlisp:deque->list group)))
+                          (structlisp:deque-append ordered group-items)
+                          (dolist (call group-items)
+                            (let* ((call-id (reconciliation--call-id call))
+                                   (output (gethash call-id outputs)))
+                              (cond
+                                ((null output)
+                                 (let ((repair (make-instance 'missing-output-repair
+                                                              :call call
+                                                              :call-id call-id)))
+                                   (structlisp:deque-push-back repairs repair)
+                                   (structlisp:deque-push-back ordered repair)))
+                                ((not (in-place-p call-id))
+                                 (structlisp:deque-push-back ordered output))))))))
+                     (t
+                      (structlisp:deque-push-back ordered item))))
+          (make-instance 'reconciliation
+                         :entries (structlisp:deque->list ordered)
+                         :repairs (structlisp:deque->list repairs)))))))
 
 (defun reconciliation-repairs (reconciliation)
   "Return a fresh list of RECONCILIATION's repair intents in call order."
