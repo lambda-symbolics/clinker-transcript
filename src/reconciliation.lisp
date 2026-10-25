@@ -60,12 +60,17 @@ are accepted unchanged. Validate a live call before publishing its durable recor
                :item item :call-id call-id))))
   item)
 
-(defun reconcile-items (items &key repaired-output-p)
+(defun reconcile-items (items &key repaired-output-p preserve-order-p)
   "Return a reconciliation plan for finite item sequence ITEMS.
 
 Preserve item identity and non-tool order. Place each contiguous call group
 before its outputs in call order, retaining orphan outputs at their original
 positions. Detect duplicate calls and outputs before constructing any repairs.
+
+With PRESERVE-ORDER-P, an output that already follows its call keeps its
+position, so a reloaded transcript reproduces the history a provider already
+received. Only outputs recorded before their call and missing outputs are
+placed after the call group.
 
 REPAIRED-OUTPUT-P, when supplied, recognizes a host's durable repair output.
 Tolerate exactly one later output only when the first output follows its call
@@ -73,7 +78,7 @@ and this predicate accepts that first output. Keep the first output because
 subsequent history may have been produced from it. Never mutate ITEMS."
   (projection--validate-items items)
   (let ((source (coerce items 'list)))
-    (multiple-value-bind (calls outputs)
+    (multiple-value-bind (calls outputs outputs-after-call)
         (reconciliation--index source repaired-output-p)
       (let ((ordered (structlisp:make-deque))
             (repairs (structlisp:make-deque))
@@ -82,8 +87,12 @@ subsequent history may have been produced from it. Never mutate ITEMS."
               for item = (pop remaining)
               do (cond
                    ((function-call-output-item-p item)
-                    (unless (gethash (reconciliation--call-id item) calls)
-                      (structlisp:deque-push-back ordered item)))
+                    (let ((call-id (reconciliation--call-id item)))
+                      (when (or (not (gethash call-id calls))
+                                (and preserve-order-p
+                                     (eq item (gethash call-id outputs))
+                                     (gethash call-id outputs-after-call)))
+                        (structlisp:deque-push-back ordered item))))
                    ((function-call-item-p item)
                     (let ((group (structlisp:make-deque)))
                       (structlisp:deque-push-back group item)
@@ -95,12 +104,16 @@ subsequent history may have been produced from it. Never mutate ITEMS."
                         (dolist (call group-items)
                           (let* ((call-id (reconciliation--call-id call))
                                  (output (gethash call-id outputs)))
-                            (unless output
-                              (setf output (make-instance 'missing-output-repair
-                                                          :call call
-                                                          :call-id call-id))
-                              (structlisp:deque-push-back repairs output))
-                            (structlisp:deque-push-back ordered output))))))
+                            (cond
+                              ((null output)
+                               (let ((repair (make-instance 'missing-output-repair
+                                                            :call call
+                                                            :call-id call-id)))
+                                 (structlisp:deque-push-back repairs repair)
+                                 (structlisp:deque-push-back ordered repair)))
+                              ((not (and preserve-order-p
+                                         (gethash call-id outputs-after-call)))
+                               (structlisp:deque-push-back ordered output))))))))
                    (t
                     (structlisp:deque-push-back ordered item))))
         (make-instance 'reconciliation
@@ -151,7 +164,7 @@ rebuild the plan from the host's durable state before retrying."
     call-id))
 
 (defun reconciliation--index (items repaired-output-p)
-  "Validate ITEMS and return call and first-output tables as two values."
+  "Validate ITEMS and return call, first-output, and output-follows-call tables as three values."
   (let ((calls (make-hash-table :test #'equal))
         (outputs (make-hash-table :test #'equal))
         (outputs-after-call (make-hash-table :test #'equal))
@@ -178,4 +191,4 @@ rebuild the plan from the host's durable state before retrying."
                      (setf (gethash call-id late-outputs) t)
                      (error 'reconciliation-error :reason ':duplicate-output
                             :item item :call-id call-id))))))))
-    (values calls outputs)))
+    (values calls outputs outputs-after-call)))
