@@ -21,7 +21,8 @@
   :serial      t
   :components  ((:module     "tests"
                  :serial     t
-                 :components ((:file "tests")
+                 :components ((:file "package")
+                              (:file "tests")
                               (:file "projection-tests")
                               (:file "compaction-tests"))))
   :perform     (asdf:test-op (operation component)
