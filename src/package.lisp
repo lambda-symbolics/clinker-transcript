@@ -1,4 +1,5 @@
 (defpackage #:clinker-transcript
+  (:documentation "Provider transcript items: type predicates, constructors, ordered projection, call and output reconciliation, and compaction carry-forward.")
   (:nicknames #:transcript)
   (:use #:cl)
   (:export

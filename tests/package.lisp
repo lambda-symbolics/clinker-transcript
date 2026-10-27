@@ -1,4 +1,5 @@
 (defpackage #:clinker-transcript/tests
+  (:documentation "Tests for the clinker-transcript library.")
   (:use #:cl)
   (:import-from #:clinker-transcript
                 #:json-decode
