@@ -19,13 +19,6 @@ The name is a portmanteau of Common Lisp and clanker.
 - Package: =CLINKER-TRANSCRIPT=
 - Nickname: =TRANSCRIPT=
 
-Install the locked dependencies and run all tests:
-
-#+begin_src sh
-./script/bootstrap
-./script/check
-#+end_src
-
 * Items
 
 #+begin_src lisp
@@ -137,6 +130,20 @@ publishing; item references and metadata values are shared and must not be
 mutated by callbacks. The library performs no I/O, publishes no records and
 executes no tools. Choose truthful interrupted/unknown output content in the
 caller, and publish the replacement only after all host-side checks succeed.
+
+* Development
+
+#+begin_src sh
+./script/bootstrap
+./script/check
+./script/check --fix
+#+end_src
+
+=./script/check= runs the tests, then checks the source with
+[[https://github.com/lambda-symbolics/cheque][cheque]] as =cheque.sexp=
+configures it. =--fix= skips the tests and repairs what cheque can repair.
+cheque and its tools are development dependencies: =checks/qlfile= lists them,
+and the check installs them on first use into =~/.cache/cheque/tools/=.
 
 * License
 
