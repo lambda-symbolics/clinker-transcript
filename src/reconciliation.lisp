@@ -4,23 +4,23 @@
 
 (defclass missing-output-repair ()
   ((call
-    :initarg :call
-    :reader missing-output-repair-call
+    :initarg       :call
+    :reader        missing-output-repair-call
     :documentation "The shared function-call item whose output is missing.")
    (call-id
-    :initarg :call-id
-    :reader missing-output-repair-call-id
+    :initarg       :call-id
+    :reader        missing-output-repair-call-id
     :documentation "The nonempty call identifier to use for the repair output."))
   (:documentation "An intent to publish an output for an interrupted function call."))
 
 (defclass reconciliation ()
   ((entries
-    :initarg :entries
-    :reader reconciliation--entries
+    :initarg       :entries
+    :reader        reconciliation--entries
     :documentation "Ordered item references interspersed with repair intents.")
    (repairs
-    :initarg :repairs
-    :reader reconciliation--repairs
+    :initarg       :repairs
+    :reader        reconciliation--repairs
     :documentation "The missing-output intents in call order."))
   (:documentation "A validated, read-only call/output projection plan.
 
@@ -29,9 +29,9 @@ repairs, then materializes a replacement projection."))
 
 (define-condition reconciliation-error (projection-error)
   ((call-id
-    :initarg :call-id
-    :initform nil
-    :reader reconciliation-error-call-id
+    :initarg       :call-id
+    :initform      nil
+    :reader        reconciliation-error-call-id
     :documentation "The affected call identifier, when one is available."))
   (:documentation "Invalid call/output history or an invalid supplied repair.")
   (:report (lambda (condition stream)
@@ -89,8 +89,8 @@ subsequent history may have been produced from it. Never mutate ITEMS."
                       (gethash call-id outputs-after-call)
                       (not (and repaired-output-p
                                 (funcall repaired-output-p output)))))))
-        (let ((ordered (structlisp:make-deque))
-              (repairs (structlisp:make-deque))
+        (let ((ordered   (structlisp:make-deque))
+              (repairs   (structlisp:make-deque))
               (remaining source))
           (loop while remaining
                 for item = (pop remaining)
@@ -111,11 +111,11 @@ subsequent history may have been produced from it. Never mutate ITEMS."
                           (structlisp:deque-append ordered group-items)
                           (dolist (call group-items)
                             (let* ((call-id (reconciliation--call-id call))
-                                   (output (gethash call-id outputs)))
+                                   (output  (gethash call-id outputs)))
                               (cond
                                 ((null output)
                                  (let ((repair (make-instance 'missing-output-repair
-                                                              :call call
+                                                              :call    call
                                                               :call-id call-id)))
                                    (structlisp:deque-push-back repairs repair)
                                    (structlisp:deque-push-back ordered repair)))
@@ -148,8 +148,8 @@ rebuild the plan from the host's durable state before retrying."
                      (funcall repair-output entry)
                      (restart-case
                          (error 'reconciliation-error
-                                :reason ':missing-output
-                                :item (missing-output-repair-call entry)
+                                :reason  ':missing-output
+                                :item    (missing-output-repair-call entry)
                                 :call-id (missing-output-repair-call-id entry))
                        (use-output (output)
                          :report "Supply an output after arranging its publication."
@@ -172,10 +172,10 @@ rebuild the plan from the host's durable state before retrying."
 
 (defun reconciliation--index (items repaired-output-p)
   "Validate ITEMS and return call, first-output, and output-follows-call tables as three values."
-  (let ((calls (make-hash-table :test #'equal))
-        (outputs (make-hash-table :test #'equal))
+  (let ((calls              (make-hash-table :test #'equal))
+        (outputs            (make-hash-table :test #'equal))
         (outputs-after-call (make-hash-table :test #'equal))
-        (late-outputs (make-hash-table :test #'equal)))
+        (late-outputs       (make-hash-table :test #'equal)))
     (dolist (item items)
       (cond
         ((function-call-item-p item)

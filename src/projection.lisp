@@ -9,9 +9,9 @@
 
 (defclass projection ()
   ((state
-    :initform (projection--make-state (structlisp:make-deque)
-                                     (make-hash-table :test #'equal))
-    :accessor projection--state
+    :initform      (projection--make-state (structlisp:make-deque)
+                                          (make-hash-table :test #'equal))
+    :accessor      projection--state
     :documentation "The current item collection and named EQ metadata tables."))
   (:documentation "An in-memory ordered transcript and its item metadata.
 
@@ -20,12 +20,12 @@ shared; list spines and collection storage are owned by this projection."))
 
 (define-condition projection-error (error)
   ((reason
-    :initarg :reason
-    :reader projection-error-reason
+    :initarg       :reason
+    :reader        projection-error-reason
     :documentation "The keyword identifying the violated projection contract.")
    (item
-    :initarg :item
-    :reader projection-error-item
+    :initarg       :item
+    :reader        projection-error-item
     :documentation "The item or collection which violated the contract."))
   (:documentation "An invalid projection operation.")
   (:report (lambda (condition stream)
@@ -63,8 +63,8 @@ Prepare the replacement before changing PROJECTION. Retained item identities
 keep every metadata value, including explicit NIL. Return PROJECTION."
   (projection--validate-items items)
   (let ((replacement (structlisp:make-deque))
-        (retained (make-hash-table :test #'eq))
-        (metadata (make-hash-table :test #'equal)))
+        (retained    (make-hash-table :test #'eq))
+        (metadata    (make-hash-table :test #'equal)))
     (structlisp:deque-append replacement items)
     (map nil (lambda (item) (setf (gethash item retained) t)) items)
     (maphash

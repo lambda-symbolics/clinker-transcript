@@ -4,32 +4,32 @@
 
 (defclass compaction-plan ()
   ((cutoff
-    :initarg :cutoff
-    :reader compaction-plan-cutoff
+    :initarg       :cutoff
+    :reader        compaction-plan-cutoff
     :documentation "Exclusive source item count captured for compaction.")
    (source
-    :initarg :source
-    :reader compaction-plan--source
+    :initarg       :source
+    :reader        compaction-plan--source
     :documentation "Captured source items for validating late correlations.")
    (start
-    :initarg :start
-    :reader compaction-plan--start
+    :initarg       :start
+    :reader        compaction-plan--start
     :documentation "Earliest retained item index in the captured source.")
    (items
-    :initarg :items
-    :reader compaction-plan--items
+    :initarg       :items
+    :reader        compaction-plan--items
     :documentation "Required chronological suffix of shared item references.")
    (unresolved-calls
-    :initarg :unresolved-calls
-    :reader compaction-plan--unresolved-calls
+    :initarg       :unresolved-calls
+    :reader        compaction-plan--unresolved-calls
     :documentation "Calls without correlated outputs at the captured cutoff.")
    (metadata
-    :initarg :metadata
-    :reader compaction-plan--metadata
+    :initarg       :metadata
+    :reader        compaction-plan--metadata
     :documentation "Detached source metadata tables, keyed by EQUAL names.")
    (repaired-output-p
-    :initarg :repaired-output-p
-    :reader compaction-plan--repaired-output-p
+    :initarg       :repaired-output-p
+    :reader        compaction-plan--repaired-output-p
     :documentation "The caller's predicate for recognizing previous durable repairs."))
   (:documentation "A pure, detached carry-forward plan for replacing a projection.
 
@@ -53,17 +53,17 @@ returning. Never publish repairs or change the source projection."
     (reconcile-items source :repaired-output-p repaired-output-p)
     (let* ((prefix-plan (reconcile-items (subseq source 0 cutoff)
                                          :repaired-output-p repaired-output-p))
-           (unresolved (mapcar #'missing-output-repair-call
-                               (reconciliation-repairs prefix-plan)))
-           (start (compaction--retained-start source cutoff unresolved)))
+           (unresolved  (mapcar #'missing-output-repair-call
+                                (reconciliation-repairs prefix-plan)))
+           (start       (compaction--retained-start source cutoff unresolved)))
       (make-instance 'compaction-plan
-                     :cutoff cutoff
-                     :source source
-                     :start start
-                     :items (subseq source start)
-                     :unresolved-calls unresolved
-                     :metadata (compaction--copy-metadata
-                                (projection-state-metadata (projection--state projection)))
+                     :cutoff            cutoff
+                     :source            source
+                     :start             start
+                     :items             (subseq source start)
+                     :unresolved-calls  unresolved
+                     :metadata          (compaction--copy-metadata
+                                         (projection-state-metadata (projection--state projection)))
                      :repaired-output-p repaired-output-p))))
 
 (defun compaction-plan-items (plan)
@@ -96,21 +96,21 @@ Failure leaves PLAN and its original projection unchanged. Item objects remain
 shared; callers must not mutate them through callbacks."
   (projection--validate-items replacement-items)
   (projection--validate-items additional-items)
-  (let* ((source (append (compaction-plan--source plan)
-                         (coerce additional-items 'list)))
-         (start (progn
-                  (reconcile-items source :repaired-output-p repaired-output-p)
-                  (compaction--retained-start source (compaction-plan--start plan) nil)))
-         (combined (append (coerce replacement-items 'list) (subseq source start)))
-         (validated (reconcile-items combined :repaired-output-p repaired-output-p))
-         (selected (if family-supplied-p
-                       (reconcile-items
-                        (items-for-family combined family
-                                          :item-families item-families
-                                          :handoff-families handoff-families)
-                        :repaired-output-p repaired-output-p)
-                       validated))
-         (items (reconciliation-items selected :repair-output repair-output))
+  (let* ((source      (append (compaction-plan--source plan)
+                              (coerce additional-items 'list)))
+         (start       (progn
+                        (reconcile-items source :repaired-output-p repaired-output-p)
+                        (compaction--retained-start source (compaction-plan--start plan) nil)))
+         (combined    (append (coerce replacement-items 'list) (subseq source start)))
+         (validated   (reconcile-items combined :repaired-output-p repaired-output-p))
+         (selected    (if family-supplied-p
+                          (reconcile-items
+                           (items-for-family combined family
+                                             :item-families    item-families
+                                             :handoff-families handoff-families)
+                           :repaired-output-p repaired-output-p)
+                          validated))
+         (items       (reconciliation-items selected :repair-output repair-output))
          (replacement (make-projection :items items)))
     ;; Validate supplied repairs together, not merely one output at a time.
     (reconcile-items items :repaired-output-p repaired-output-p)
@@ -122,7 +122,7 @@ shared; callers must not mutate them through callbacks."
 
 (defun compaction--copy-metadata (metadata &optional items prune-p)
   "Copy METADATA tables, retaining only ITEMS when PRUNE-P is true."
-  (let ((copy (make-hash-table :test #'equal))
+  (let ((copy     (make-hash-table :test #'equal))
         (retained (make-hash-table :test #'eq)))
     (dolist (item items)
       (setf (gethash item retained) t))
@@ -140,9 +140,9 @@ shared; callers must not mutate them through callbacks."
 (defun compaction--retained-start (source cutoff unresolved)
   "Return the earliest suffix boundary closed over correlated context."
   (let ((positions (make-hash-table :test #'equal))
-        (pending (make-hash-table :test #'eq))
-        (items (coerce source 'vector))
-        (start cutoff))
+        (pending   (make-hash-table :test #'eq))
+        (items     (coerce source 'vector))
+        (start     cutoff))
     (dolist (call unresolved)
       (setf (gethash call pending) t))
     (loop for item across items
