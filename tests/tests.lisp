@@ -1,6 +1,7 @@
 (in-package #:clinker-transcript/tests)
 
-(defvar *assertions* 0)
+(defvar *assertions* 0
+  "The number of assertions checked in the current test run.")
 
 (defun check (value control &rest arguments)
   "Count one assertion and fail with CONTROL unless VALUE is true."
