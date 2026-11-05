@@ -40,6 +40,7 @@
    ;; call/output reconciliation
    #:function-call-output-item-p
    #:validate-function-call
+   #:projection-validate-function-call
    #:use-output
    #:reconcile-items
    #:reconciliation

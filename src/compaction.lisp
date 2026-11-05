@@ -117,7 +117,8 @@ shared; callers must not mutate them through callbacks."
     (setf (projection--state replacement)
           (projection--make-state
            (projection-state-items (projection--state replacement))
-           (compaction--copy-metadata (compaction-plan--metadata plan) items t)))
+           (compaction--copy-metadata (compaction-plan--metadata plan) items t)
+           (projection-state-calls (projection--state replacement))))
     replacement))
 
 (defun compaction--copy-metadata (metadata &optional items prune-p)

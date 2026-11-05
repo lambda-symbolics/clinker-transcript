@@ -10,6 +10,7 @@
                 #:chat-reasoning-item-p
                 #:family-private-item-p
                 #:function-call-item-p
+                #:projection-validate-function-call
                 #:native-compaction-item-canonicalize
                 #:native-compaction-item-p
                 #:reasoning-item-p

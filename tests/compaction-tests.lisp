@@ -34,6 +34,14 @@
                                      plan :replacement-items (vector summary)))
                   (list summary private first second first-output second-output steering))
            "outputs follow calls in call order and steering survives")
+    (check (handler-case
+               (progn (projection-validate-function-call
+                       (compaction-plan-projection plan :replacement-items (vector summary))
+                       (compaction-test-call "b"))
+                      nil)
+             (projection-error (condition)
+               (eq (projection-error-reason condition) ':duplicate-call)))
+           "a compacted projection knows the calls it retains")
     (let ((snapshot (compaction-plan-items plan)))
       (setf (first snapshot) nil)
       (check (eq (first (compaction-plan-items plan)) private) "detached plan spine"))

@@ -60,6 +60,19 @@ are accepted unchanged. Validate a live call before publishing its durable recor
                :item item :call-id call-id))))
   item)
 
+(defun projection-validate-function-call (projection item)
+  "Return ITEM after rejecting an absent call identifier or one PROJECTION already holds.
+
+This is VALIDATE-FUNCTION-CALL with PROJECTION's items as the preceding items,
+answered in constant time from an index the projection keeps as items are
+appended or replaced. The caller provides the same exclusion as for appends."
+  (when (function-call-item-p item)
+    (let ((call-id (reconciliation--call-id item)))
+      (when (nth-value 1 (gethash call-id (projection-state-calls (projection--state projection))))
+        (error 'reconciliation-error :reason ':duplicate-call
+                                     :item item :call-id call-id))))
+  item)
+
 (defun reconcile-items (items &key repaired-output-p preserve-order-p)
   "Return a reconciliation plan for finite item sequence ITEMS.
 

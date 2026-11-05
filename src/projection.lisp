@@ -2,14 +2,16 @@
 
 ;;;; -- Ordered Projections --
 
-(defstruct (projection-state (:constructor projection--make-state (items metadata)))
-  "One jointly replaceable item collection and its metadata."
+(defstruct (projection-state (:constructor projection--make-state (items metadata calls)))
+  "One jointly replaceable item collection, its metadata, and its call index."
   (items nil :type structlisp:deque :read-only t)
-  (metadata nil :type hash-table :read-only t))
+  (metadata nil :type hash-table :read-only t)
+  (calls nil :type hash-table :read-only t))
 
 (defclass projection ()
   ((state
     :initform      (projection--make-state (structlisp:make-deque)
+                                          (make-hash-table :test #'equal)
                                           (make-hash-table :test #'equal))
     :accessor      projection--state
     :documentation "The current item collection and named EQ metadata tables."))
@@ -53,7 +55,9 @@ and replaces these tables, so obtain a fresh table after projection replacement.
 
 (defun projection-append (projection item)
   "Append ITEM in constant amortized time and return ITEM."
-  (structlisp:deque-push-back (projection-state-items (projection--state projection)) item)
+  (let ((state (projection--state projection)))
+    (structlisp:deque-push-back (projection-state-items state) item)
+    (projection--index-call (projection-state-calls state) item))
   item)
 
 (defun projection-replace (projection items)
@@ -64,9 +68,13 @@ keep every metadata value, including explicit NIL. Return PROJECTION."
   (projection--validate-items items)
   (let ((replacement (structlisp:make-deque))
         (retained    (make-hash-table :test #'eq))
-        (metadata    (make-hash-table :test #'equal)))
+        (metadata    (make-hash-table :test #'equal))
+        (calls       (make-hash-table :test #'equal)))
     (structlisp:deque-append replacement items)
-    (map nil (lambda (item) (setf (gethash item retained) t)) items)
+    (map nil (lambda (item)
+               (setf (gethash item retained) t)
+               (projection--index-call calls item))
+         items)
     (maphash
      (lambda (key table)
        (let ((pruned (make-hash-table :test #'eq)))
@@ -77,7 +85,7 @@ keep every metadata value, including explicit NIL. Return PROJECTION."
          (setf (gethash key metadata) pruned)))
      (projection-state-metadata (projection--state projection)))
     (setf (projection--state projection)
-          (projection--make-state replacement metadata)))
+          (projection--make-state replacement metadata calls)))
   projection)
 
 (defun items-for-family (items family &key item-families handoff-families)
@@ -98,6 +106,14 @@ which should be omitted only for the family that has the native checkpoint."
                   (gethash item handoff-families)
                 (and present-p (eq excluded family))))))
    items))
+
+(defun projection--index-call (calls item)
+  "Record ITEM in CALLS under its call identifier when it is a function call."
+  (when (function-call-item-p item)
+    (let ((call-id (json-get item "call_id")))
+      (when call-id
+        (setf (gethash call-id calls) item))))
+  nil)
 
 (defun projection--validate-items (items)
   "Require a finite proper list or a non-string vector of item references."

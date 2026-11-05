@@ -56,7 +56,10 @@ filter private content and omit a portable handoff for its native family.
 * Reconciliation and recovery
 
 Before publishing a live function call, use =VALIDATE-FUNCTION-CALL= with
-=:preceding-items= to reject missing or duplicate call identifiers.
+=:preceding-items= to reject missing or duplicate call identifiers. When the
+preceding items are a projection, use =PROJECTION-VALIDATE-FUNCTION-CALL=
+instead: the projection indexes its calls as items are appended or replaced,
+so the check takes constant time rather than a copy and scan of the transcript.
 
 #+begin_src lisp
 (let ((plan (transcript:reconcile-items items
