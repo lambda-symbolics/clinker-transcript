@@ -249,3 +249,302 @@
              "completed repairs replay without another publication")
       (check (equal (reconciliation-items (reconcile-items durable)) durable)
              "reconciliation is idempotent"))))
+
+(defun test-projection-transform ()
+  "Test detached roots, semantic preorder, arbitrary metadata and identity lineage."
+  (let* ((shared     (copy-seq "literal image_url"))
+         (image      (json-object "type" "input_image" "payload" (make-instance 'standard-object)))
+         (first      (json-object "type" "message" "role" "user"
+                                  "nested" (vector (list shared shared) image)))
+         (second     (user-message-item "equal"))
+         (third      (user-message-item "equal"))
+         (source     (make-projection :items (list first second third)))
+         (lineage    (make-projection-lineage))
+         (annotation (json-object "nested" (vector (list (copy-seq "metadata")))))
+         (visits     0))
+    (setf (gethash first (projection-metadata-table source ':family)) ':one
+          (gethash first (projection-metadata-table source ':nil)) nil
+          (gethash first (projection-metadata-table source "extra")) annotation
+          (gethash first (projection-metadata-table source "alias")) annotation)
+    (multiple-value-bind (target remap changes)
+        (projection-transform
+         source :lineage lineage
+         :node-function  (lambda (node)
+                           (if (and (hash-table-p node)
+                                    (equal (json-get node "type") "input_image"))
+                               (progn (incf visits) (values :replace nil))
+                               (values :retain nil)))
+         :item-function  (lambda (copy position)
+                            (if (zerop position)
+                                (progn (setf (gethash "edited" copy) t)
+                                       (values :replace copy))
+                                (values :retain nil))))
+      (let* ((copy     (first (projection-items target)))
+             (nested   (json-get copy "nested"))
+             (metadata (gethash copy (projection-metadata-table target "extra"))))
+        (check (eq metadata (gethash copy (projection-metadata-table target "alias")))
+               "metadata copies preserve sharing across namespaces")
+        (check (= visits 1) "semantic replacement skips unsupported payload before descent")
+        (check (null (aref nested 1)) "explicit NIL replacement is retained")
+        (check (and (eq (first (aref nested 0)) (second (aref nested 0)))
+                    (not (eq shared (first (aref nested 0)))))
+               "nested copies preserve sharing without sharing source strings")
+        (check (not (json-get first "edited")) "item callback edits only detached roots")
+        (check (eq copy (gethash first remap)) "root remap uses EQ source identity")
+        (check (not (eq (gethash second remap) (gethash third remap)))
+               "equal roots have distinct origin identities")
+        (check (equal (mapcar (lambda (change) (getf change :position)) changes) '(0 1 2))
+               "changes retain chronological source positions")
+        (check (and (nth-value 1 (gethash copy (projection-metadata-table target ':nil)))
+                    (not (nth-value 1 (gethash (gethash second remap)
+                                             (projection-metadata-table target ':nil)))))
+               "all namespaces preserve present NIL versus absent")
+        (setf (char (first (aref (json-get metadata "nested") 0)) 0) #\X)
+        (check (string= (first (aref (json-get annotation "nested") 0)) "metadata")
+               "metadata JSON is deeply detached")
+        (setf (char shared 0) #\Y)
+        (check (string= (first (aref nested 0)) "literal image_url")
+               "source mutation does not reach transformed strings")
+        (projection-lineage-replace lineage (gethash second remap) :replace
+                                    :replacement (user-message-item "replacement"))
+        (projection-lineage-replace lineage (gethash third remap) :drop)
+        (let ((next (projection-transform source :lineage lineage)))
+          (check (= (length (projection-items next)) 2) "drop resolves through original identity")
+          (check (string= (json-get (aref (json-get (second (projection-items next)) "content") 0)
+                                    "text")
+                         "replacement")
+                 "replacement resolves across successive detached views"))))))
+
+(defun test-projection-transform-failures ()
+  "Test callback failures, unsupported metadata and correlation validation atomically."
+  (let* ((call    (json-object "type" "function_call" "call_id" "a"))
+         (output  (function-call-output-item "a" "done"))
+         (source  (make-projection :items (list call output)))
+         (lineage (make-projection-lineage)))
+    (dolist (drop '(0 1))
+      (check (handler-case
+                 (progn (projection-transform
+                         source :lineage lineage
+                         :item-function  (lambda (copy position)
+                                           (declare (ignore copy))
+                                           (values (if (= position drop) :drop :retain) nil)))
+                        nil)
+               (projection-error () t))
+             "dropping either half of a complete pair is rejected"))
+    (check (null (projection-items
+                  (projection-transform source
+                                        :item-function (lambda (copy position)
+                                                         (declare (ignore copy position))
+                                                         (values :drop nil)))))
+           "explicit whole exchange drop is valid")
+    (check (handler-case
+               (progn (projection-transform
+                       source :lineage lineage
+                       :item-function  (lambda (copy position)
+                                         (setf (gethash "edited" copy) t)
+                                         (values (if (zerop position) :retain :invalid) nil)))
+                      nil)
+             (projection-error () t))
+           "late invalid callback action fails")
+    (check (not (json-get call "edited")) "failed transform did not mutate source roots")
+    (check (= (length (projection-items (projection-transform source :lineage lineage))) 2)
+           "failed transforms do not publish lineage removals")
+    (setf (gethash call (projection-metadata-table source ':opaque))
+          (make-instance 'standard-object))
+    (check (handler-case (progn (projection-transform source) nil)
+             (projection-error (condition)
+               (eq (projection-error-reason condition) ':unsupported-json-value)))
+           "unsupported mutable metadata requires a copier")
+    (check (= (length (projection-items
+                       (projection-transform source :metadata-value-function
+                                             (lambda (value)
+                                               (declare (ignore value))
+                                               (json-object "copied" t))))) 2)
+           "explicit application metadata copier is supported")
+    (let ((unresolved (make-projection :items (list call))))
+      (check (= (length (reconciliation-repairs
+                         (reconcile-items (projection-items (projection-transform unresolved))))) 1)
+             "existing unresolved calls are retained without executing repairs"))
+    (let ((duplicate (make-projection :items (list call call))))
+      (check (handler-case (progn (projection-transform duplicate) nil)
+               (reconciliation-error () t))
+             "source duplicate correlations are rejected before callbacks"))
+    (check (handler-case
+               (progn (projection-transform
+                       source :metadata-value-function #'identity
+                       :item-function                  (lambda (copy position)
+                                                         (declare (ignore copy position))
+                                                         (values :replace (json-object "type" "function_call" "call_id" "b"))))
+                      nil)
+             (reconciliation-error () t))
+           "result duplicate correlations are rejected")
+    (check (handler-case
+               (progn (projection-validate-function-call
+                       (projection-transform source :metadata-value-function #'identity) call) nil)
+             (reconciliation-error () t))
+           "transformed call index is rebuilt")))
+
+(defun test-projection-transform-origin-validation ()
+  "Keep existing incomplete correlations and reject newly broken pair origins."
+  (let* ((call   (json-object "type" "function_call" "call_id" "pair"))
+         (output (json-object "type" "function_call_output" "call_id" "pair"))
+         (other  (json-object "type" "message" "role" "user" "content" "other"))
+         (source (make-projection :items (list call output other))))
+    (dolist (type '("function_call" "function_call_output"))
+      (check (handler-case
+                 (progn (projection-transform
+                         (make-projection :items (list other))
+                         :item-function (lambda (copy position)
+                                          (declare (ignore copy position))
+                                          (values :replace (json-object "type" type "call_id" "new"))))
+                        nil)
+               (projection-error () t))
+             "new incomplete correlations are rejected"))
+    (check (= (length (projection-items
+                       (projection-transform (make-projection :items (list output))))) 1)
+           "existing orphan output survives read-only validation")
+    (check (handler-case
+               (progn (projection-transform
+                       source :item-function
+                       (lambda (copy position)
+                         (case position
+                           (0
+                            (values :drop nil))
+                           (2
+                            (values :replace call))
+                           (otherwise
+                            (values :retain copy)))))
+                      nil)
+             (projection-error () t))
+           "unrelated roots cannot substitute for a removed source pair member")
+    (check (= (length (projection-items
+                       (projection-transform
+                        source :item-function
+                        (lambda (copy position)
+                          (if (< position 2)
+                              (values :replace (json-object "type" "message" "content" "quoted"))
+                              (values :retain copy)))))) 3)
+           "both source pair roots may become non-protocol text")
+    (let* ((target (make-projection :items (list other)))
+           (table  (projection-metadata-table target ':family)))
+      (setf (gethash call (projection-metadata-table source ':family)) ':source
+            (gethash other table) ':synthesized)
+      (clinker-transcript:projection-copy-metadata source target)
+      (check (eq (gethash other (projection-metadata-table target ':family)) ':synthesized)
+             "metadata merge preserves target-only synthesized entries"))))
+
+(defun test-projection-transform-alias-boundaries ()
+  "Keep literal replacements separate from transformed aliases and active ancestors."
+  (dolist (replacement-first-p '(nil t))
+    (let* ((child   (json-object "text" "secret"))
+           (wrapper (json-object "wrap" child))
+           (input   (if replacement-first-p (vector wrapper child) (vector child wrapper)))
+           (result  (transform-json
+                     input :node-function
+                     (lambda (node)
+                       (cond ((eq node wrapper)
+                              (values :replace child))
+                             ((equal node "secret")
+                              (values :replace "redacted"))
+                             (t
+                              (values :retain nil))))))
+           (literal (aref result (if replacement-first-p 0 1)))
+           (edited  (aref result (if replacement-first-p 1 0))))
+      (check (string= (json-get literal "text") "secret")
+             "replacement copies literal content in either traversal order")
+      (check (string= (json-get edited "text") "redacted")
+             "retained aliases receive callbacks in either traversal order")
+      (check (and (not (eq literal edited)) (not (eq literal child)) (not (eq edited child)))
+             "raw and transformed copies are detached and distinct")
+      (check (string= (json-get child "text") "secret") "alias source is unchanged")))
+  (let* ((child  (json-object "text" "secret"))
+         (parent (json-object "child" child))
+         (result (transform-json parent :node-function
+                                 (lambda (node)
+                                   (if (eq node child)
+                                       (values :replace parent)
+                                       (values :retain nil))))))
+    (check (string= (json-get (json-get (json-get result "child") "child") "text") "secret")
+           "an acyclic ancestor replacement is copied literally without a false cycle")
+    (check (and (not (eq result parent)) (eq (json-get parent "child") child))
+           "ancestor replacement leaves the source graph unchanged")))
+
+(defun test-projection-transform-correlation-boundaries ()
+  "Reject role-swapped pair origins and retain the effective repaired output."
+  (let* ((call-a       (json-object "type" "function_call" "call_id" "a"))
+         (out-a        (function-call-output-item "a" "one"))
+         (call-b       (json-object "type" "function_call" "call_id" "b"))
+         (out-b        (function-call-output-item "b" "two"))
+         (items        (list call-a out-a call-b out-b))
+         (source       (make-projection :items items))
+         (lineage      (make-projection-lineage))
+         (replacements (vector (function-call-output-item "x" "one")
+                               (json-object "type" "function_call" "call_id" "y")
+                               (function-call-output-item "y" "two")
+                               (json-object "type" "function_call" "call_id" "x"))))
+    (check (handler-case
+               (progn (projection-transform
+                       source :lineage lineage :item-function
+                       (lambda (copy position)
+                         (declare (ignore copy))
+                         (values :replace (aref replacements position))))
+                      nil)
+             (projection-error (condition)
+               (eq (projection-error-reason condition) ':transform-broken-pair)))
+           "role swaps cannot split original pairs into different complete pairs")
+    (check (equal (projection-items source) items) "failed role swap leaves source identities unchanged")
+    (check (equal (mapcar (lambda (item) (json-get item "call_id"))
+                         (projection-items (projection-transform source :lineage lineage)))
+                  '("a" "a" "b" "b"))
+           "failed role swap does not publish lineage replacements"))
+  (let* ((call   (json-object "type" "function_call" "call_id" "a"))
+         (repair (function-call-output-item "a" "repair"))
+         (late   (function-call-output-item "a" "late"))
+         (source (make-projection :items (list call repair late)))
+         (result (projection-transform
+                  source :repaired-output-p
+                  (lambda (item) (equal (json-get item "output") "repair"))
+                  :item-function
+                  (lambda (copy position)
+                    (declare (ignore copy))
+                    (values (if (= position 2) :drop :retain) nil)))))
+    (check (equal (mapcar (lambda (item) (json-get item "type")) (projection-items result))
+                  '("function_call" "function_call_output"))
+           "dropping the tolerated late output preserves the selected complete pair")
+    (check (string= (json-get (second (projection-items result)) "output") "repair")
+           "the surviving paired output is the recognized repair")
+    (check (= (length (projection-items source)) 3) "repair source remains unchanged")))
+
+(defun test-projection-transform-duplicate-roots ()
+  "Reject occurrence-ambiguous roots before callbacks, preserving metadata and lineage."
+  (let* ((item       (user-message-item "shared"))
+         (source     (make-projection :items (list item item)))
+         (lineage    (make-projection-lineage))
+         (annotation (json-object "nested" (vector "metadata")))
+         (visits     0))
+    (setf (gethash item (projection-metadata-table source ':nil)) nil
+          (gethash item (projection-metadata-table source "extra")) annotation)
+    (check (handler-case
+               (progn (projection-transform
+                       source :lineage lineage :item-function
+                       (lambda (copy position)
+                         (declare (ignore copy))
+                         (incf visits)
+                         (values :replace (user-message-item (write-to-string position)))))
+                      nil)
+             (projection-error (condition)
+               (eq (projection-error-reason condition) ':duplicate-transform-root)))
+           "repeated source identities cannot silently collapse per-position metadata")
+    (check (zerop visits) "duplicate roots are rejected before callbacks")
+    (check (and (eq (first (projection-items source)) item)
+                (eq (second (projection-items source)) item)
+                (nth-value 1 (gethash item (projection-metadata-table source ':nil)))
+                (null (gethash item (projection-metadata-table source ':nil)))
+                (eq (gethash item (projection-metadata-table source "extra")) annotation)
+                (string= (aref (json-get annotation "nested") 0) "metadata"))
+           "duplicate failure preserves source roots and arbitrary present-NIL metadata")
+    (projection-replace source (list item))
+    (let ((result (projection-transform source :lineage lineage)))
+      (check (string= (json-get (aref (json-get (first (projection-items result)) "content") 0) "text")
+                      "shared")
+             "duplicate failure did not publish per-position lineage replacements"))))

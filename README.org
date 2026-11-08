@@ -134,6 +134,48 @@ mutated by callbacks. The library performs no I/O, publishes no records and
 executes no tools. Choose truthful interrupted/unknown output content in the
 caller, and publish the replacement only after all host-side checks succeed.
 
+* Detached transformations
+
+Use =PROJECTION-TRANSFORM= to prepare a candidate without sharing JSON containers
+or strings with the source. It returns a fresh projection, an EQ map from source
+roots to retained/replaced roots, and chronological change plists containing
+=:origin=, =:position= and =:action=.
+
+Supply =:node-function= to inspect each node before copying its children. Return
+=(values :retain nil)=, =(values :replace replacement)= or =(values :drop nil)=.
+Replacement NIL is a retained JSON value. Replacements are copied without
+revisiting the callback. Replace a whole media node here to skip its payload,
+URL and incidental fields before descent. Ordinary strings have no media meaning.
+
+An optional =:item-function= receives the detached root and zero-based source
+position. Edit this candidate and return =:retain=, or explicitly replace/drop it
+using the same action protocol. Root replacements keep all named metadata,
+including present NIL entries. Metadata JSON values are deeply copied separately
+from semantic-node filtering. Immutable atoms may share; unsupported mutable
+objects and cyclic/improper containers signal =PROJECTION-ERROR=. Supply
+=:metadata-value-function= to copy application-specific metadata explicitly.
+Callbacks that inspect source nodes or metadata must not mutate them.
+
+The operation validates source and result correlations, rebuilds the call index,
+and rejects newly incomplete pairs without executing repairs. Existing unresolved
+calls and orphan outputs retain their original meaning. Callback/copy/validation
+failure does not publish a candidate or update lineage. Host side effects in
+callbacks are outside this guarantee.
+
+For successive candidates, create =MAKE-PROJECTION-LINEAGE= and pass it as
+=:lineage=. Record a replacement with
+=(projection-lineage-replace lineage item :replace :replacement value)= or a
+removal with =(projection-lineage-replace lineage item :drop)=. Original and
+intermediate identities resolve through the same origin in constant time.
+Keep lineage local to the operation. Choose grouping, synthesized text, notices,
+metadata inheritance for merged roots, and publication in the host.
+
+=TRANSFORM-JSON= provides the same detached JSON traversal independently.
+=PROJECTION-COPY-METADATA= copies all named tables for retained EQ identities
+(or a supplied =:remap=), preserving target-only entries and sharing values unless
+=:value-function= supplies a copier. Existing projection and compaction operations
+continue to share item objects and metadata values as documented above.
+
 * Development
 
 #+begin_src sh

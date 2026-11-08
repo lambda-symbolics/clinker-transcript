@@ -25,6 +25,10 @@
                 #:projection-append
                 #:projection-replace
                 #:projection-metadata-table
+                #:transform-json
+                #:projection-transform
+                #:make-projection-lineage
+                #:projection-lineage-replace
                 #:projection-error
                 #:projection-error-reason
                 #:projection-error-item
